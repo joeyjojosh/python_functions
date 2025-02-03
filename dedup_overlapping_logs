@@ -1,0 +1,65 @@
+def dedup_overlapping_log(df: pd.DataFrame, start_time: str, end_time: str, user: str):
+    
+    """
+    Adjusts log entries in a DataFrame to ensure that there are no overlapping intervals for each user
+
+    Args:
+    df (pd.DataFrame): The input DataFrame containing time segments
+    start_time (str): The name of the start time field in the DataFrame
+    end_time (str): The name of the end time field in the DataFrame
+    user (str): The name of the user field in the DataFrame
+
+    Returns:
+    pd.DataFrame: A DataFrame with adjusted log entries
+    """
+
+    # Check for required columns
+    for col in [start_time, end_time, user]:
+        if col not in df.columns:
+            raise ValueError(f"Required column '{col}' not found in DataFrame.")
+
+    # Initialize an empty list to hold adjusted DataFrames for each user
+    adjusted_data = []
+
+    # Group data by user email and process each group individually
+    for user, group in df.groupby(user):
+        # Create the group and sort each user's data by start time
+        group = group.sort_values(by=start_time).copy()
+
+        # Pre-process data to ensure end_time is always later than or equal to start_time
+        for index, row in group.iterrows():
+            if row[end_time] < row[start_time] or pd.isnull(row[end_time]):
+                row[end_time] = row[start_time]
+
+        # Initialize the variable to track the end time of the last segment processed
+        current_end = pd.NaT
+        updated_rows = []
+
+        # Iterate through each segment of the user's data
+        for index, row in group.iterrows():
+            try:
+                # updated_rows.append(row.to_dict())
+                if row[start_time] >= current_end or pd.isna(current_end):
+                    updated_rows.append(row.to_dict())
+                    current_end = row[end_time]
+                else:
+                    if row[end_time] <= current_end:
+                        row[end_time] = row[start_time]
+                        updated_rows.append(row.to_dict())
+                    else:
+                        if row[end_time] > current_end:
+                            row[start_time] = current_end
+                        updated_rows.append(row.to_dict())
+                        current_end = max(current_end, row[end_time])
+            except Exception as e:
+                print(f"Error processing row with index {index}: {e}")
+                continue  # Skip to the next iteration on error
+
+        # Convert the adjusted rows for the current user back to a DataFrame
+        updated_group = pd.DataFrame(updated_rows)
+        adjusted_data.append(updated_group)
+
+    # Concatenate all adjusted DataFrames from each user into a single DataFrame
+    result_data = pd.concat(adjusted_data, ignore_index=True)
+
+    return result_data
