@@ -1,0 +1,85 @@
+def allocate_durations_to_buckets(df, start_time_field, duration_field, bucket_size):
+    
+    """
+    Allocates duration into specified buckets based on start time and duration fields.
+
+    Parameters:
+    - df (pd.DataFrame): Input DataFrame containing the data.
+    - start_time_field (str): Column name for start time.
+    - duration_field (str): Column name for duration in seconds.
+    - bucket_size (int): Size of each bucket in seconds.
+
+    Returns:
+    - pd.DataFrame: DataFrame containing original index, bucket name (hh:mm), and time within that bucket.
+    """
+
+    results = []
+
+    for index, row in df.iterrows():
+        start_time = row[start_time_field]
+        duration_seconds = row[duration_field]
+        end_time = start_time + timedelta(seconds=duration_seconds)
+
+        # Calculate total seconds since midnight
+        start_seconds_since_midnight = start_time.hour * 3600 + start_time.minute * 60 + start_time.second
+        end_seconds_since_midnight = end_time.hour * 3600 + end_time.minute * 60 + end_time.second
+
+        # Calculate bucket indices based on seconds since midnight
+        start_bucket_idx = start_seconds_since_midnight // bucket_size
+        end_bucket_idx = end_seconds_since_midnight // bucket_size
+
+        # Check if both start and end are in the same bucket
+        if start_bucket_idx == end_bucket_idx:
+            time_in_bucket = duration_seconds
+            bucket_name_formatted = format_bucket_name(start_bucket_idx, bucket_size)
+
+            results.append({
+                'original_index': index,
+                'bucket': bucket_name_formatted,
+                'time_in_bucket': time_in_bucket
+            })
+        else:
+            # Time in the starting bucket
+            time_in_start_bucket = (start_bucket_idx + 1) * bucket_size - start_seconds_since_midnight
+            time_in_start_bucket_seconds = int(time_in_start_bucket)  # Convert to seconds
+            bucket_name_start_formatted = format_bucket_name(start_bucket_idx, bucket_size)
+
+            results.append({
+                'original_index': index,
+                'bucket': bucket_name_start_formatted,
+                'time_in_bucket': time_in_start_bucket_seconds
+            })
+
+            # Time in the ending bucket
+            time_in_end_bucket = end_seconds_since_midnight - (end_bucket_idx * bucket_size)
+            time_in_end_bucket_seconds = int(time_in_end_bucket)
+            bucket_name_end_formatted = format_bucket_name(end_bucket_idx, bucket_size)
+
+            results.append({
+                'original_index': index,
+                'bucket': bucket_name_end_formatted,
+                'time_in_bucket': time_in_end_bucket_seconds
+            })
+
+            # Now manage the middle buckets
+            for b in range(int(start_bucket_idx) + 1, int(end_bucket_idx)):
+                bucket_name_middle_formatted = format_bucket_name(b, bucket_size)
+
+                results.append({
+                    'original_index': index,
+                    'bucket': bucket_name_middle_formatted,
+                    'time_in_bucket': bucket_size
+                })
+
+    # Create new DataFrame from results
+    df_bucketed = pd.DataFrame(results)
+    
+    return df_bucketed
+
+def format_bucket_name(bucket_index, bucket_size):
+    """Format the bucket name according to the bucket index and size in seconds."""
+    total_seconds = bucket_index * bucket_size
+    hours = total_seconds // 3600
+    minutes = (total_seconds % 3600) // 60
+    
+    return f"{int(hours):02}:{int(minutes):02}"
