@@ -1,4 +1,4 @@
-def dedup_overlapping_log(df: pd.DataFrame, start_time: str, end_time: str, user: str):
+def dedup_overlapping_logs(df: pd.DataFrame, start_time: str, end_time: str, user: str):
     
     """
     Adjusts log entries in a DataFrame to ensure that there are no overlapping intervals for each user
