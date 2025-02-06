@@ -59,6 +59,10 @@ def trim_events_to_interval(df: pd.DataFrame, start_date_time: str, duration: in
             min_start = datetime.combine(event_date, datetime.strptime(min_start_time, '%H:%M').time()) - timedelta(seconds=tolerance)
             max_end = datetime.combine(event_date, datetime.strptime(max_end_time, '%H:%M').time()) + timedelta(seconds=tolerance)
 
+            if end < start or pd.isnull(end):
+                func_end = start
+                func_discard_dur = dur
+
             if start < min_start:
                 func_start = min_start
                 if end < min_start:
