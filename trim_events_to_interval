@@ -1,12 +1,16 @@
-def trim_events_to_interval(df: pd.DataFrame, event_start_date_time: str, event_duration: int, min_start_time: str, max_end_time: str, tolerance: int):
+import pandas as pd
+from datetime import datetime
+from datetime import timedelta
+
+def trim_events_to_interval(df: pd.DataFrame, start_date_time: str, duration: int, min_start_time: str, max_end_time: str, tolerance: int):
     """
-    Adjusts event times in a DataFrame to ensure they fall within a specified time range,
-    and calculates the discarded duration for events outside the range.
+    
+    Adjusts event times in a DataFrame to ensure they fall within a specified time range plus tolerance
 
     Args:
     df (pd.DataFrame): The input DataFrame containing event data.
-    event_start_time (str): The name of the event start time field (datetime) in the DataFrame.
-    event_duration (str): The name of the event duration field (integer in seconds) in the DataFrame.
+    start_date_time (str): The name of the event start time field (datetime) in the DataFrame.
+    duration (str): The name of the event duration field (integer in seconds) in the DataFrame.
     min_start_time (str): The minimum start time (in 'HH:MM' format).
     max_end_time (str): The maximum end time (in 'HH:MM' format).
     tolerance (int): The tolerance in seconds.
@@ -16,7 +20,7 @@ def trim_events_to_interval(df: pd.DataFrame, event_start_date_time: str, event_
     """
 
     # Ensure the input DataFrame has the required columns
-    for col in [event_start_date_time, event_duration]:
+    for col in [start_date_time, duration]:
         if col not in df.columns:
             raise ValueError(f"Required column '{col}' not found in DataFrame.")
 
@@ -33,66 +37,73 @@ def trim_events_to_interval(df: pd.DataFrame, event_start_date_time: str, event_
         raise ValueError("min_start_time must be less than max_end_time")
 
     # Ensure the event start time column is in datetime format
-    df[event_start_date_time] = pd.to_datetime(df[event_start_date_time])
+    df[start_date_time] = pd.to_datetime(df[start_date_time])
 
-    # Initialize lists to hold the new values
-    start_times = []
-    original_durations = []
-    new_durations = []
-    discarded_durations = []
+    # Create a list to hold the rows
+    updated_rows = []
 
-    # Iterate through each event
     for index, row in df.iterrows():
-        start_time = row[event_start_date_time]
-        duration = row[event_duration]
-        end_time = start_time + timedelta(seconds=duration)
-        discarded_duration = 0
-        new_duration = 0
+        try:
 
-        # Calculate the minimum and maximum datetime for the current event's date
-        event_date = start_time.date()
-        min_start_dt = datetime.combine(event_date, datetime.strptime(min_start_time, '%H:%M').time()) - timedelta(seconds=tolerance)
-        max_end_dt = datetime.combine(event_date, datetime.strptime(max_end_time, '%H:%M').time()) + timedelta(seconds=tolerance)
+            # Initialise start and end time variables
+            start = row[start_date_time]
+            end = start + timedelta(seconds=row[duration])
+            func_start = start
+            func_end = end
+            dur = row[duration]
+            func_duration = duration
+            func_discard_dur = 0
 
-        # Calculate the duration to discard if start time is before the minimum start time
-        if start_time < min_start_dt:
-            if end_time < min_start_dt:
-                discarded_duration += duration
-            else:
-                discarded_duration += int((min_start_dt - start_time).total_seconds())
+            # Calculate the minimum and maximum datetime for the current event's date
+            event_date = start.date()
+            min_start = datetime.combine(event_date, datetime.strptime(min_start_time, '%H:%M').time()) - timedelta(seconds=tolerance)
+            max_end = datetime.combine(event_date, datetime.strptime(max_end_time, '%H:%M').time()) + timedelta(seconds=tolerance)
 
-        # Calculate the duration to discard if end time is after the maximum end time
-        if end_time > max_end_dt:
-            if start_time > max_end_dt:
-                discarded_duration += duration
-            else:
-                discarded_duration += int((end_time - max_end_dt).total_seconds())
+            if start < min_start:
+                func_start = min_start
+                if end < min_start:
+                    func_end = min_start
+                    func_discard_dur = dur
+                else:
+                    func_discard_dur = int((min_start - start).total_seconds())
 
-        new_duration = duration - discarded_duration
+            if end > max_end:
+                func_end = max_end
+                if start > max_end:
+                    func_start = max_end
+                    func_discard_dur = dur
+                else:
+                    func_discard_dur += int((end - max_end).total_seconds())
 
-        # Append the original and new values to the lists
-        start_times.append(start_time)
-        original_durations.append(duration)
-        new_durations.append(new_duration)
-        discarded_durations.append(discarded_duration)
+            func_duration = dur - func_discard_dur
 
-    # Create a new DataFrame with the adjusted values
-    result_df = pd.DataFrame({
-        'original_index': df.index,
-        'event_start_date_time_': start_times,
-        'original_duration_': original_durations,
-        'new_duration_': new_durations,
-        'discarded_duration_': discarded_durations
-    })
+        except Exception as e:
+            print(f"Error processing row with index {index}: {e}")
+            continue  # Skip to the next iteration on error
+        
+        # Create a new dict with the row and additional fields
+        updated_row = row.to_dict()
+        updated_row['func_start'] = func_start
+        updated_row['func_end'] = func_end
+        updated_row['func_duration'] = func_duration
+        updated_row['func_discard_dur'] = func_discard_dur
+        
+        # Append the updated row to the list
+        updated_rows.append(updated_row)
+
+    # Create a new DataFrame from the updated rows
+    result_df = pd.DataFrame(updated_rows)
 
     return result_df
 
 # Sample usage
 data = {
+    'string_field': ['seg', 'gre', 'srg'],
     'event_start_time': ['2025-02-02 06:52:29', '2025-02-02 12:14:00', '2025-02-02 18:37:28'],
-    'event_duration': [3600, 765, 5400],  # durations in seconds
+    'event_duration': [300, 300, 300],
     'user': ['user1', 'user1', 'user2']
-}
+    }
+
 df = pd.DataFrame(data)
 
 result_df = trim_events_to_interval(df, 'event_start_time', 'event_duration', '07:00', '18:30', 450)
